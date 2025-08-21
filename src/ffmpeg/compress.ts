@@ -33,7 +33,7 @@ export interface VideoInfo {
   }>;
 }
 
-export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 23, progressCallback?: (progress: number) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
+export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 23, progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
       // 檢查輸入檔案是否存在
@@ -114,8 +114,10 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
           return;
         }
 
-        // 解析進度信息
+        // 解析進度信息和預估時間
         const progressMatch = stderrLine.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+        const speedMatch = stderrLine.match(/speed=\s*(\d+\.?\d*)x/);
+
         if (progressMatch && progressCallback) {
           const hours = parseInt(progressMatch[1]);
           const minutes = parseInt(progressMatch[2]);
@@ -132,14 +134,28 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
               if (currentProgress >= lastProgress && currentTimeInSeconds >= lastProgressTime) {
                 lastProgress = currentProgress;
                 lastProgressTime = currentTimeInSeconds;
+
+                // 計算預估剩餘時間
+                let estimatedTime = "";
+                if (speedMatch && currentProgress > 0) {
+                  const speed = parseFloat(speedMatch[1]);
+                  const remainingTime = (totalDuration - currentTimeInSeconds) / speed;
+                  const remainingMinutes = Math.floor(remainingTime / 60);
+                  const remainingSeconds = Math.floor(remainingTime % 60);
+
+                  if (remainingMinutes > 0) {
+                    estimatedTime = `預估剩餘時間: ${remainingMinutes}分${remainingSeconds}秒 (${speed.toFixed(1)}x)`;
+                  } else {
+                    estimatedTime = `預估剩餘時間: ${remainingSeconds}秒 (${speed.toFixed(1)}x)`;
+                  }
+                }
+
                 console.log(`壓縮進度: ${currentProgress}% (${currentTimeInSeconds}s / ${totalDuration}s)`);
-                progressCallback(Math.min(currentProgress, 100));
+                progressCallback(Math.min(currentProgress, 100), estimatedTime);
               }
             }
           }
         }
-
-        console.log("FFmpeg stderr:", stderrLine.trim());
       });
 
       // 處理進程退出
@@ -197,13 +213,10 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
       if (cancelToken) {
         console.log("設置定時器檢查取消狀態...");
         const cancelCheckInterval = setInterval(() => {
-          console.log("定時器檢查中... 取消狀態:", cancelToken.cancelled);
           if (cancelToken.cancelled) {
-            console.log("定時器檢測到取消，終止 FFmpeg 進程...");
             clearInterval(cancelCheckInterval);
             try {
               ffmpegProcess.kill("SIGKILL");
-              console.log("已發送 SIGKILL 信號");
             } catch (error) {
               console.error("終止 FFmpeg 進程時發生錯誤:", error);
             }

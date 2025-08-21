@@ -22,14 +22,18 @@ const App: React.FC = () => {
   });
   const [isCompressing, setIsCompressing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState<string>("");
   const [result, setResult] = useState<CompressionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 監聽壓縮進度和錯誤
   useEffect(() => {
     if (window.electronAPI) {
-      window.electronAPI.onCompressionProgress((progressValue: number) => {
+      window.electronAPI.onCompressionProgress((progressValue: number, estimatedTime?: string) => {
         setProgress(progressValue);
+        if (estimatedTime) {
+          setEstimatedTime(estimatedTime);
+        }
       });
 
       window.electronAPI.onError((errorMessage: string) => {
@@ -67,59 +71,47 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log("前端：開始壓縮，設置 isCompressing = true");
     setIsCompressing(true);
     setProgress(0);
+    setEstimatedTime("");
     setResult(null);
     setError(null);
 
     try {
-      console.log("前端：調用 electronAPI.compressVideo");
       const result = await window.electronAPI.compressVideo({
         inputPath: selectedFile,
         vcodec: settings.vcodec,
         crf: settings.crf,
       });
 
-      console.log("前端：壓縮完成，結果:", result);
       setResult(result);
       if (!result.success) {
         setError(result.error || "壓縮失敗");
         setIsCompressing(false);
-        console.log("前端：壓縮失敗，設置 isCompressing = false");
       } else {
         // 壓縮成功，自動重置狀態
         setIsCompressing(false);
-        console.log("前端：壓縮成功，設置 isCompressing = false");
       }
     } catch (err) {
-      console.error("前端：壓縮錯誤:", err);
+      console.error("壓縮過程中發生錯誤:", err);
       setError("壓縮過程中發生錯誤");
       setIsCompressing(false);
-      console.log("前端：壓縮錯誤，設置 isCompressing = false");
     }
   };
 
   const handleCancel = async () => {
     try {
-      console.log("前端：開始取消流程");
-      console.log("前端：當前壓縮狀態:", isCompressing);
-      console.log("前端：發送取消壓縮請求");
-
       const result = await window.electronAPI.cancelCompression();
-      console.log("前端：取消壓縮結果:", result);
 
       if (result.success) {
         setIsCompressing(false);
         setProgress(0);
         setError("壓縮已被取消");
-        console.log("前端：已更新 UI 狀態");
       } else {
         setError(result.error || "取消壓縮失敗");
-        console.log("前端：取消失敗:", result.error);
       }
     } catch (err) {
-      console.error("前端：取消壓縮時發生錯誤:", err);
+      console.error("取消壓縮時發生錯誤:", err);
       setError("取消壓縮時發生錯誤");
     }
   };
@@ -227,11 +219,6 @@ const App: React.FC = () => {
         </Grid>
 
         <Box sx={{ mt: 3 }}>
-          {/* 調試信息 */}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            調試信息: isCompressing = {isCompressing.toString()}, progress = {progress}%
-          </Typography>
-
           {isCompressing ? (
             <Button variant="outlined" color="error" size="large" onClick={handleCancel} startIcon={<ErrorIcon />} fullWidth>
               取消壓縮
@@ -254,6 +241,11 @@ const App: React.FC = () => {
           <Typography variant="body2" sx={{ mt: 1, textAlign: "center" }}>
             {progress}% 完成
           </Typography>
+          {estimatedTime && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: "center" }}>
+              {estimatedTime}
+            </Typography>
+          )}
         </Paper>
       )}
 

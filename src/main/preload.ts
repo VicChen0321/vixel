@@ -12,8 +12,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   cancelCompression: () => ipcRenderer.invoke("cancel-compression"),
 
   // 監聽壓縮進度
-  onCompressionProgress: (callback: (progress: number) => void) => {
-    ipcRenderer.on("compression-progress", (event, progress) => callback(progress));
+  onCompressionProgress: (callback: (progress: number, estimatedTime?: string) => void) => {
+    ipcRenderer.on("compression-progress", (event, progress, estimatedTime) => callback(progress, estimatedTime));
   },
 
   // 監聽錯誤

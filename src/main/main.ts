@@ -85,10 +85,10 @@ ipcMain.handle(
         inputPath,
         vcodec,
         crf,
-        (progress) => {
+        (progress, estimatedTime) => {
           // 發送進度更新到渲染程序
           if (mainWindow) {
-            mainWindow.webContents.send("compression-progress", progress);
+            mainWindow.webContents.send("compression-progress", progress, estimatedTime);
           }
         },
         cancelToken
