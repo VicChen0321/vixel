@@ -6,10 +6,46 @@ import ffprobeStatic from "ffprobe-static";
 
 // 獲取 ffmpeg 二進制檔案路徑
 function getFFmpegPath(): string {
-  if (!ffmpegStatic) {
-    throw new Error("FFmpeg 二進制檔案未找到");
+  // 判斷是否為開發模式
+  if (process.env.NODE_ENV === "development") {
+    // 開發模式：使用 ffmpeg-static 回傳的路徑
+    if (!ffmpegStatic) {
+      throw new Error("FFmpeg 二進制檔案未找到");
+    }
+
+    let ffmpegPath: string;
+    if (typeof ffmpegStatic === "string") {
+      ffmpegPath = ffmpegStatic;
+    } else if (ffmpegStatic && typeof ffmpegStatic === "object" && "path" in ffmpegStatic) {
+      ffmpegPath = (ffmpegStatic as any).path;
+    } else {
+      throw new Error("FFmpeg 路徑格式不正確");
+    }
+
+    if (!fs.existsSync(ffmpegPath)) {
+      throw new Error(`FFmpeg 路徑不存在: ${ffmpegPath}`);
+    }
+
+    return ffmpegPath;
+  } else {
+    // Production 模式：直接從 process.resourcesPath 構建路徑
+    const resourcesPath = (process as any).resourcesPath;
+    if (!resourcesPath) {
+      throw new Error("無法獲取 resourcesPath");
+    }
+
+    // ffmpeg-static 的二進制檔案直接在根目錄
+    const isWindows = process.platform === "win32";
+    const binaryName = isWindows ? "ffmpeg.exe" : "ffmpeg";
+    const ffmpegPath = path.join(resourcesPath, "ffmpeg-static", binaryName);
+
+    if (!fs.existsSync(ffmpegPath)) {
+      throw new Error(`FFmpeg 路徑不存在: ${ffmpegPath}`);
+    }
+
+    console.log(`使用 production 路徑: ${ffmpegPath}`);
+    return ffmpegPath;
   }
-  return ffmpegStatic;
 }
 
 export interface CompressionOptions {
@@ -242,7 +278,61 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
 // 獲取影片資訊（使用 ffmpeg-static）
 export function getVideoInfo(inputPath: string): Promise<VideoInfo> {
   return new Promise((resolve, reject) => {
-    const ffprobePath = ffprobeStatic.path;
+    // 獲取 ffprobe 路徑
+    let ffprobePath: string;
+    try {
+      if (process.env.NODE_ENV === "development") {
+        // 開發模式：使用 ffprobe-static 回傳的路徑
+        if (typeof ffprobeStatic === "string") {
+          ffprobePath = ffprobeStatic;
+        } else if (ffprobeStatic && typeof ffprobeStatic === "object" && "path" in ffprobeStatic) {
+          ffprobePath = (ffprobeStatic as any).path;
+        } else {
+          throw new Error("FFprobe 路徑未找到");
+        }
+
+        if (!fs.existsSync(ffprobePath)) {
+          throw new Error(`FFprobe 路徑不存在: ${ffprobePath}`);
+        }
+      } else {
+        // Production 模式：直接從 process.resourcesPath 構建路徑
+        const resourcesPath = (process as any).resourcesPath;
+        if (!resourcesPath) {
+          throw new Error("無法獲取 resourcesPath");
+        }
+
+        // ffprobe-static 的二進制檔案在平台特定的子目錄
+        const isWindows = process.platform === "win32";
+        const isMac = process.platform === "darwin";
+        const isLinux = process.platform === "linux";
+
+        let platformDir: string;
+        if (isMac) {
+          // 檢測架構
+          const arch = process.arch === "arm64" ? "arm64" : "x64";
+          platformDir = `darwin/${arch}`;
+        } else if (isLinux) {
+          platformDir = "linux";
+        } else if (isWindows) {
+          platformDir = "win32";
+        } else {
+          throw new Error(`不支援的平台: ${process.platform}`);
+        }
+
+        const binaryName = isWindows ? "ffprobe.exe" : "ffprobe";
+        ffprobePath = path.join(resourcesPath, "ffprobe-static", "bin", platformDir, binaryName);
+
+        if (!fs.existsSync(ffprobePath)) {
+          throw new Error(`FFprobe 路徑不存在: ${ffprobePath}`);
+        }
+
+        console.log(`使用 production 路徑: ${ffprobePath}`);
+      }
+    } catch (error) {
+      reject(new Error(`FFprobe 路徑錯誤: ${error instanceof Error ? error.message : "Unknown error"}`));
+      return;
+    }
+
     const ffprobeArgs = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", inputPath];
 
     const ffprobeProcess = spawn(ffprobePath, ffprobeArgs);

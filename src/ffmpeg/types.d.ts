@@ -5,3 +5,11 @@ declare module "ffprobe-static" {
   const ffprobeStatic: FFprobeStatic;
   export default ffprobeStatic;
 }
+
+declare module "ffmpeg-static" {
+  interface FFmpegStatic {
+    path?: string;
+  }
+  const ffmpegStatic: FFmpegStatic | string;
+  export default ffmpegStatic;
+}
