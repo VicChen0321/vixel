@@ -1,6 +1,5 @@
 import React from "react";
 import { Paper, Typography, Box, Chip, Stack } from "@mui/material";
-import { Info as InfoIcon } from "@mui/icons-material";
 
 export const Instructions: React.FC = () => {
   return (
@@ -30,11 +29,6 @@ export const Instructions: React.FC = () => {
           <Typography variant="body2">壓縮完成後，輸出檔案會保存在原檔案同目錄下</Typography>
         </Box>
       </Stack>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        <InfoIcon sx={{ fontSize: 16, mr: 0.5, verticalAlign: "middle" }} />
-        CRF 值越低品質越好，檔案越大。建議從 23~28 開始調整。
-      </Typography>
     </Paper>
   );
 };
