@@ -1,6 +1,6 @@
-# Electron FFmpeg 影片壓縮工具
+# Vixel - 專業影片壓縮工具
 
-一個基於 Electron 的桌面應用程式，使用 FFmpeg 進行影片壓縮。
+一個基於 Electron 的桌面應用程式，內建 FFmpeg 進行影片壓縮，無需額外安裝任何依賴。
 
 ## 功能特色
 
@@ -13,29 +13,19 @@
 
 ## 系統需求
 
-- Node.js 18+ 
-- FFmpeg (需要預先安裝)
+- Windows 10+ / macOS 10.12+ / Linux
+- 無需安裝 FFmpeg (已內建)
 
-### FFmpeg 安裝
+### 安裝說明
 
-#### macOS
-```bash
-# 使用 Homebrew
-brew install ffmpeg
-```
+Vixel 已經內建了 FFmpeg，您只需要下載對應您作業系統的安裝包即可使用：
 
-#### Windows
-1. 下載 FFmpeg: https://ffmpeg.org/download.html
-2. 解壓縮到任意目錄
-3. 將 FFmpeg 的 bin 目錄加入系統 PATH
+- **macOS**: 下載 `.dmg` 檔案，拖拽到 Applications 資料夾
+- **Windows**: 下載 `.exe` 安裝檔，執行安裝
 
-#### Linux (Ubuntu/Debian)
-```bash
-sudo apt update
-sudo apt install ffmpeg
-```
+## 開發者安裝與執行
 
-## 安裝與執行
+如果您是開發者想要從原始碼執行：
 
 ### 1. 安裝依賴
 ```bash
@@ -62,7 +52,7 @@ npm run dist:win
 ## 專案結構
 
 ```
-electron-ffmpeg-tool/
+vixel/
 ├── src/
 │   ├── main/           # Electron 主程序
 │   │   ├── main.ts     # 主程序入口
@@ -74,6 +64,7 @@ electron-ffmpeg-tool/
 │   └── ffmpeg/         # FFmpeg 相關功能
 │       └── compress.ts # 影片壓縮模組
 ├── dist/               # 建置輸出目錄
+├── release/            # 發布檔案目錄
 ├── package.json        # 專案配置
 ├── tsconfig.json       # TypeScript 配置
 ├── vite.config.ts      # Vite 配置
@@ -111,16 +102,17 @@ electron-ffmpeg-tool/
 
 ## 故障排除
 
-### FFmpeg 路徑問題
-如果遇到 FFmpeg 路徑問題，請確保：
-1. FFmpeg 已正確安裝
-2. FFmpeg 在系統 PATH 中
-3. 在 macOS 上，FFmpeg 通常位於 `/opt/homebrew/bin/ffmpeg`
+### 一般問題
+如果遇到問題，請嘗試：
+1. 重新啟動應用程式
+2. 檢查影片檔案格式是否支援
+3. 確保有足夠的磁碟空間
 
-### 編碼器不支援
-某些編碼器可能需要額外的 FFmpeg 編譯選項：
-- H.265/HEVC: 需要 `--enable-libx265`
-- VP9: 需要 `--enable-libvpx`
+### 編碼器支援
+Vixel 支援以下編碼器：
+- H.264: 廣泛支援，相容性最佳
+- H.265/HEVC: 更好的壓縮率，但需要較新的播放器
+- VP9: 開源編碼器，適合網頁播放
 
 ## 授權
 
@@ -135,5 +127,7 @@ MIT License
 ### v1.0.0
 - 初始版本
 - 支援基本影片壓縮功能
-- 跨平台支援
+- 跨平台支援 (Windows, macOS, Linux)
 - Material-UI 介面
+- 內建 FFmpeg，無需額外安裝
+- 支援多種影片格式和編碼器

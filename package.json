@@ -54,8 +54,8 @@
     "react-dom": "^18.2.0"
   },
   "build": {
-    "appId": "com.example.electron-ffmpeg-tool",
-    "productName": "Electron FFmpeg Tool",
+    "appId": "dev.vicchen.vixel",
+    "productName": "Vixel",
     "directories": {
       "output": "release"
     },
@@ -65,7 +65,12 @@
     ],
     "mac": {
       "category": "public.app-category.video",
-      "target": "dmg"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
     },
     "win": {
       "target": "nsis"
