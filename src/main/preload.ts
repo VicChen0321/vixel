@@ -5,24 +5,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // 選擇影片檔案
   selectVideoFile: () => ipcRenderer.invoke("select-video-file"),
 
+  // 獲取影片資訊
+  getVideoInfo: (filePath: string) => ipcRenderer.invoke("get-video-info", filePath),
+
   // 壓縮影片
-  compressVideo: (data: { inputPath: string; vcodec: string; crf: number }) => ipcRenderer.invoke("compress-video", data),
+  compressVideo: (inputPath: string, vcodec: string, crf: number, progressCallback: (progress: number, estimatedTime?: string) => void) => {
+    // 創建一個唯一的通道名稱來處理進度回調
+    const channelName = `progress-${Date.now()}-${Math.random()}`;
+
+    // 監聽進度更新
+    const progressListener = (event: any, progress: number, estimatedTime?: string) => {
+      progressCallback(progress, estimatedTime);
+    };
+
+    ipcRenderer.on(channelName, progressListener);
+
+    // 調用壓縮方法
+    return ipcRenderer.invoke("compress-video", inputPath, vcodec, crf, channelName).finally(() => {
+      // 清理監聽器
+      ipcRenderer.removeAllListeners(channelName);
+    });
+  },
 
   // 取消壓縮
   cancelCompression: () => ipcRenderer.invoke("cancel-compression"),
-
-  // 監聽壓縮進度
-  onCompressionProgress: (callback: (progress: number, estimatedTime?: string) => void) => {
-    ipcRenderer.on("compression-progress", (event, progress, estimatedTime) => callback(progress, estimatedTime));
-  },
-
-  // 監聽錯誤
-  onError: (callback: (error: string) => void) => {
-    ipcRenderer.on("error", (event, error) => callback(error));
-  },
-
-  // 移除監聽器
-  removeAllListeners: (channel: string) => {
-    ipcRenderer.removeAllListeners(channel);
-  },
 });

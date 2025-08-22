@@ -1,318 +1,335 @@
-import React, { useState, useEffect } from "react";
-import { Container, Paper, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, LinearProgress, Alert, Card, CardContent, Grid, Chip } from "@mui/material";
-import { VideoFile as VideoFileIcon, Compress as CompressIcon, Settings as SettingsIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon } from "@mui/icons-material";
+import React, { useState, useCallback } from "react";
+import { Container, Paper, Typography, Button, Box, LinearProgress, FormControl, InputLabel, Select, MenuItem, Alert, Card, CardContent, Grid, IconButton, Chip, Divider, Stack } from "@mui/material";
+import { PlayArrow as PlayIcon, Cancel as CancelIcon, CloudUpload as UploadIcon, CheckCircle as CheckIcon, Info as InfoIcon } from "@mui/icons-material";
 
-interface CompressionSettings {
-  vcodec: string;
-  crf: number;
+interface VideoInfo {
+  duration: number;
+  size: number;
+  format: string;
 }
 
 interface CompressionResult {
-  success: boolean;
-  outputPath?: string;
-  error?: string;
+  outputPath: string;
+  originalSize: number;
+  compressedSize: number;
+  compressionRatio: number;
 }
 
 const App: React.FC = () => {
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>("");
-  const [settings, setSettings] = useState<CompressionSettings>({
-    vcodec: "libx264",
-    crf: 23,
-  });
-  const [isCompressing, setIsCompressing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string>("");
+  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [vcodec, setVcodec] = useState<string>("libx264");
+  const [crf, setCrf] = useState<number>(23);
+  const [isCompressing, setIsCompressing] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
   const [estimatedTime, setEstimatedTime] = useState<string>("");
+  const [error, setError] = useState<string>("");
   const [result, setResult] = useState<CompressionResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  // 監聽壓縮進度和錯誤
-  useEffect(() => {
-    if (window.electronAPI) {
-      window.electronAPI.onCompressionProgress((progressValue: number, estimatedTime?: string) => {
-        setProgress(progressValue);
+  const handleFileSelect = useCallback(async () => {
+    try {
+      const filePath = await window.electronAPI.selectVideoFile();
+      if (filePath) {
+        const fileName = filePath.split("/").pop() || filePath.split("\\").pop() || "";
+        setSelectedFilePath(filePath);
+        setSelectedFileName(fileName);
+        setError("");
+        setResult(null);
+        setProgress(0);
+        setEstimatedTime("");
+
+        try {
+          const info = await window.electronAPI.getVideoInfo(filePath);
+          setVideoInfo(info);
+        } catch (err) {
+          setError(`無法讀取影片資訊: ${err}`);
+        }
+      }
+    } catch (err) {
+      setError(`選擇檔案時發生錯誤: ${err}`);
+    }
+  }, []);
+
+  const handleCompress = useCallback(async () => {
+    if (!selectedFilePath) return;
+
+    setIsCompressing(true);
+    setError("");
+    setResult(null);
+    setProgress(0);
+    setEstimatedTime("");
+
+    try {
+      const result = await window.electronAPI.compressVideo(selectedFilePath, vcodec, crf, (progress: number, estimatedTime?: string) => {
+        setProgress(progress);
         if (estimatedTime) {
           setEstimatedTime(estimatedTime);
         }
       });
-
-      window.electronAPI.onError((errorMessage: string) => {
-        setError(errorMessage);
-        setIsCompressing(false);
-      });
-    }
-
-    return () => {
-      if (window.electronAPI) {
-        window.electronAPI.removeAllListeners("compression-progress");
-        window.electronAPI.removeAllListeners("error");
-      }
-    };
-  }, []);
-
-  const handleFileSelect = async () => {
-    try {
-      const filePath = await window.electronAPI.selectVideoFile();
-      if (filePath) {
-        setSelectedFile(filePath);
-        setFileName(filePath.split("/").pop() || filePath.split("\\").pop() || "");
-        setResult(null);
-        setError(null);
-        setProgress(0);
-      }
-    } catch (err) {
-      setError("選擇檔案時發生錯誤");
-    }
-  };
-
-  const handleCompress = async () => {
-    if (!selectedFile) {
-      setError("請先選擇影片檔案");
-      return;
-    }
-
-    setIsCompressing(true);
-    setProgress(0);
-    setEstimatedTime("");
-    setResult(null);
-    setError(null);
-
-    try {
-      const result = await window.electronAPI.compressVideo({
-        inputPath: selectedFile,
-        vcodec: settings.vcodec,
-        crf: settings.crf,
-      });
-
       setResult(result);
-      if (!result.success) {
-        setError(result.error || "壓縮失敗");
-        setIsCompressing(false);
-      } else {
-        // 壓縮成功，自動重置狀態
-        setIsCompressing(false);
-      }
     } catch (err) {
-      console.error("壓縮過程中發生錯誤:", err);
-      setError("壓縮過程中發生錯誤");
+      setError(`壓縮失敗: ${err}`);
+    } finally {
       setIsCompressing(false);
     }
-  };
+  }, [selectedFilePath, vcodec, crf]);
 
-  const handleCancel = async () => {
+  const handleCancel = useCallback(async () => {
     try {
-      const result = await window.electronAPI.cancelCompression();
-
-      if (result.success) {
-        setIsCompressing(false);
-        setProgress(0);
-        setError("壓縮已被取消");
-      } else {
-        setError(result.error || "取消壓縮失敗");
-      }
+      await window.electronAPI.cancelCompression();
     } catch (err) {
-      console.error("取消壓縮時發生錯誤:", err);
-      setError("取消壓縮時發生錯誤");
+      console.error("取消壓縮失敗:", err);
     }
-  };
-
-  const handleSettingsChange = (field: keyof CompressionSettings, value: string | number) => {
-    setSettings((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const getVcodecOptions = () => [
-    { value: "libx264", label: "H.264 (libx264)" },
-    { value: "libx265", label: "H.265/HEVC (libx265)" },
-    { value: "libvpx-vp9", label: "VP9 (libvpx-vp9)" },
-    { value: "copy", label: "複製 (不重新編碼)" },
-  ];
+  }, []);
 
   const getCrfDescription = () => {
-    if (settings.vcodec === "libx264") {
-      return "CRF 值範圍：0-51，0 為無損，23 為預設，51 為最差品質";
-    } else if (settings.vcodec === "libx265") {
-      return "CRF 值範圍：0-51，0 為無損，28 為預設，51 為最差品質";
-    } else if (settings.vcodec === "libvpx-vp9") {
-      return "CRF 值範圍：0-63，0 為無損，31 為預設，63 為最差品質";
-    }
-    return "CRF 值不適用於此編碼器";
+    if (crf <= 18) return "無損品質";
+    if (crf <= 23) return "高品質";
+    if (crf <= 28) return "良好品質";
+    if (crf <= 35) return "一般品質";
+    return "低品質";
+  };
+
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    const sizes = ["B", "KB", "MB", "GB"];
+    if (bytes === 0) return "0 B";
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
   };
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Typography variant="h3" component="h1" gutterBottom align="center" color="primary">
-        <CompressIcon sx={{ mr: 2, verticalAlign: "middle" }} />
-        FFmpeg 影片壓縮工具
-      </Typography>
-
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          <VideoFileIcon sx={{ mr: 1, verticalAlign: "middle" }} />
-          選擇影片檔案
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box textAlign="center" mb={4}>
+        <Typography variant="h2" component="h1" gutterBottom color="primary" fontWeight="bold">
+          Vixel
         </Typography>
+        <Typography variant="h5" color="text.secondary" gutterBottom>
+          專業影片壓縮工具
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          使用 FFmpeg 技術，提供高效能的影片壓縮解決方案
+        </Typography>
+      </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-          <Button variant="contained" onClick={handleFileSelect} disabled={isCompressing} startIcon={<VideoFileIcon />}>
-            選擇影片檔案
-          </Button>
+      <Grid container spacing={4}>
+        {/* 主要操作區域 */}
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              影片選擇
+            </Typography>
 
-          {selectedFile && (
-            <Chip
-              label={fileName}
-              color="primary"
-              variant="outlined"
-              onDelete={() => {
-                setSelectedFile(null);
-                setFileName("");
-                setResult(null);
-              }}
-            />
+            <Box sx={{ mb: 3 }}>
+              <Button variant="outlined" startIcon={<UploadIcon />} size="large" fullWidth sx={{ py: 2 }} onClick={handleFileSelect}>
+                選擇影片檔案
+              </Button>
+            </Box>
+
+            {selectedFilePath && (
+              <Card variant="outlined" sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {selectedFileName}
+                      </Typography>
+                      {videoInfo && (
+                        <Typography variant="body2" color="text.secondary">
+                          {formatDuration(videoInfo.duration)} • {formatFileSize(videoInfo.size)}
+                        </Typography>
+                      )}
+                    </Box>
+                    <IconButton
+                      onClick={() => {
+                        setSelectedFilePath(null);
+                        setSelectedFileName("");
+                        setVideoInfo(null);
+                        setError("");
+                        setResult(null);
+                        setProgress(0);
+                        setEstimatedTime("");
+                      }}
+                      color="error"
+                    >
+                      <CancelIcon />
+                    </IconButton>
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
+
+            {selectedFilePath && (
+              <>
+                <Divider sx={{ my: 3 }} />
+
+                <Typography variant="h6" gutterBottom>
+                  壓縮設定
+                </Typography>
+
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>影片編碼器</InputLabel>
+                      <Select value={vcodec} label="影片編碼器" onChange={(e) => setVcodec(e.target.value)}>
+                        <MenuItem value="libx264">H.264 (libx264)</MenuItem>
+                        <MenuItem value="libx265">H.265 (libx265)</MenuItem>
+                        <MenuItem value="libvpx-vp9">VP9 (libvpx-vp9)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>CRF 值</InputLabel>
+                      <Select value={crf} label="CRF 值" onChange={(e) => setCrf(e.target.value as number)}>
+                        <MenuItem value={18}>18 (無損)</MenuItem>
+                        <MenuItem value={20}>20 (極高品質)</MenuItem>
+                        <MenuItem value={23}>23 (高品質)</MenuItem>
+                        <MenuItem value={26}>26 (良好品質)</MenuItem>
+                        <MenuItem value={28}>28 (一般品質)</MenuItem>
+                        <MenuItem value={30}>30 (壓縮)</MenuItem>
+                        <MenuItem value={35}>35 (高壓縮)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  <Typography variant="body2">
+                    <strong>CRF {crf}</strong> - {getCrfDescription()}
+                  </Typography>
+                </Alert>
+
+                <Box textAlign="center">
+                  {isCompressing ? (
+                    <Button variant="contained" color="error" size="large" startIcon={<CancelIcon />} onClick={handleCancel} sx={{ px: 4, py: 1.5 }}>
+                      取消壓縮
+                    </Button>
+                  ) : (
+                    <Button variant="contained" size="large" startIcon={<PlayIcon />} onClick={handleCompress} disabled={!selectedFilePath} sx={{ px: 4, py: 1.5 }}>
+                      開始壓縮
+                    </Button>
+                  )}
+                </Box>
+              </>
+            )}
+          </Paper>
+
+          {/* 進度顯示 */}
+          {isCompressing && (
+            <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                壓縮進度
+              </Typography>
+
+              <Box sx={{ mb: 2 }}>
+                <LinearProgress variant="determinate" value={progress} sx={{ height: 10, borderRadius: 5 }} />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {progress.toFixed(1)}% 完成
+                </Typography>
+              </Box>
+
+              {estimatedTime && (
+                <Typography variant="body2" color="text.secondary">
+                  預估剩餘時間: {estimatedTime}
+                </Typography>
+              )}
+            </Paper>
           )}
-        </Box>
 
-        {selectedFile && (
-          <Typography variant="body2" color="text.secondary">
-            已選擇：{selectedFile}
-          </Typography>
-        )}
-      </Paper>
+          {/* 錯誤顯示 */}
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
 
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          <SettingsIcon sx={{ mr: 1, verticalAlign: "middle" }} />
-          壓縮設定
-        </Typography>
+          {/* 結果顯示 */}
+          {result && (
+            <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
+              <Box display="flex" alignItems="center" gap={2} mb={2}>
+                <CheckIcon color="success" />
+                <Typography variant="h6" color="success.main">
+                  壓縮完成！
+                </Typography>
+              </Box>
 
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
-              <InputLabel>影片編碼器</InputLabel>
-              <Select value={settings.vcodec} label="影片編碼器" onChange={(e) => handleSettingsChange("vcodec", e.target.value)} disabled={isCompressing}>
-                {getVcodecOptions().map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    原始大小
+                  </Typography>
+                  <Typography variant="h6">{formatFileSize(result.originalSize)}</Typography>
+                </Grid>
 
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="CRF 值"
-              type="number"
-              value={settings.crf}
-              onChange={(e) => handleSettingsChange("crf", Number(e.target.value))}
-              disabled={isCompressing}
-              inputProps={{
-                min: 0,
-                max: settings.vcodec === "libvpx-vp9" ? 63 : 51,
-                step: 1,
-              }}
-              helperText={getCrfDescription()}
-            />
-          </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    壓縮後大小
+                  </Typography>
+                  <Typography variant="h6" color="success.main">
+                    {formatFileSize(result.compressedSize)}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Box sx={{ mt: 2, p: 2, bgcolor: "success.light", borderRadius: 1 }}>
+                <Typography variant="body2" color="success.dark">
+                  壓縮率: {result.compressionRatio.toFixed(1)}%
+                </Typography>
+                <Typography variant="body2" color="success.dark" sx={{ mt: 1 }}>
+                  輸出檔案: {result.outputPath}
+                </Typography>
+              </Box>
+            </Paper>
+          )}
         </Grid>
 
-        <Box sx={{ mt: 3 }}>
-          {isCompressing ? (
-            <Button variant="outlined" color="error" size="large" onClick={handleCancel} startIcon={<ErrorIcon />} fullWidth>
-              取消壓縮
-            </Button>
-          ) : (
-            <Button variant="contained" color="primary" size="large" onClick={handleCompress} disabled={!selectedFile} startIcon={<CompressIcon />} fullWidth>
-              開始壓縮
-            </Button>
-          )}
-        </Box>
-      </Paper>
-
-      {/* 進度顯示 */}
-      {isCompressing && (
-        <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            壓縮進度
-          </Typography>
-          <LinearProgress variant="determinate" value={progress} sx={{ height: 10, borderRadius: 5 }} />
-          <Typography variant="body2" sx={{ mt: 1, textAlign: "center" }}>
-            {progress}% 完成
-          </Typography>
-          {estimatedTime && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: "center" }}>
-              {estimatedTime}
+        {/* 側邊說明區域 */}
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Paper elevation={3} sx={{ p: 4, position: "sticky", top: 24 }}>
+            <Typography variant="h6" gutterBottom>
+              使用說明
             </Typography>
-          )}
-        </Paper>
-      )}
 
-      {/* 錯誤顯示 */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          <ErrorIcon sx={{ mr: 1 }} />
-          {error}
-        </Alert>
-      )}
+            <Stack spacing={2}>
+              <Box>
+                <Chip label="1" color="primary" size="small" sx={{ mr: 1 }} />
+                <Typography variant="body2">選擇要壓縮的影片檔案</Typography>
+              </Box>
 
-      {/* 結果顯示 */}
-      {result && (
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h5" gutterBottom>
-            壓縮結果
-          </Typography>
+              <Box>
+                <Chip label="2" color="primary" size="small" sx={{ mr: 1 }} />
+                <Typography variant="body2">設定影片編碼器和 CRF 值</Typography>
+              </Box>
 
-          {result.success ? (
-            <Card variant="outlined" sx={{ bgcolor: "success.light" }}>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <CheckCircleIcon color="success" sx={{ mr: 1 }} />
-                  <Typography variant="h6" color="success.dark">
-                    壓縮成功！
-                  </Typography>
-                </Box>
-                <Typography variant="body1" gutterBottom>
-                  輸出檔案：
-                </Typography>
-                <Typography variant="body2" component="code" sx={{ bgcolor: "white", p: 1, borderRadius: 1 }}>
-                  {result.outputPath}
-                </Typography>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card variant="outlined" sx={{ bgcolor: "error.light" }}>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <ErrorIcon color="error" sx={{ mr: 1 }} />
-                  <Typography variant="h6" color="error.dark">
-                    壓縮失敗
-                  </Typography>
-                </Box>
-                <Typography variant="body1">錯誤：{result.error}</Typography>
-              </CardContent>
-            </Card>
-          )}
-        </Paper>
-      )}
+              <Box>
+                <Chip label="3" color="primary" size="small" sx={{ mr: 1 }} />
+                <Typography variant="body2">點擊「開始壓縮」開始處理</Typography>
+              </Box>
 
-      {/* 使用說明 */}
-      <Paper elevation={1} sx={{ p: 2, mt: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          使用說明
-        </Typography>
-        <Typography variant="body2" paragraph>
-          1. 點擊「選擇影片檔案」按鈕選擇要壓縮的影片
-        </Typography>
-        <Typography variant="body2" paragraph>
-          2. 設定影片編碼器和 CRF 值（CRF 值越低品質越好，檔案越大）
-        </Typography>
-        <Typography variant="body2" paragraph>
-          3. 點擊「開始壓縮」開始處理
-        </Typography>
-        <Typography variant="body2">4. 壓縮完成後，輸出檔案會保存在原檔案同目錄下，檔名會加上「_compressed」後綴</Typography>
-      </Paper>
+              <Box>
+                <Chip label="4" color="primary" size="small" sx={{ mr: 1 }} />
+                <Typography variant="body2">壓縮完成後，輸出檔案會保存在原檔案同目錄下</Typography>
+              </Box>
+            </Stack>
+
+            <Divider sx={{ my: 3 }} />
+
+            <Typography variant="body2" color="text.secondary">
+              <InfoIcon sx={{ fontSize: 16, mr: 0.5, verticalAlign: "middle" }} />
+              CRF 值越低品質越好，檔案越大。建議從 23 開始調整。
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
     </Container>
   );
 };

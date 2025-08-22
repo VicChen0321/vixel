@@ -1,20 +1,22 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "path";
-import { compressVideo } from "../ffmpeg/compress";
+import { compressVideo, getVideoInfo } from "../ffmpeg/compress";
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
+    width: 1200,
+    height: 800,
+    minWidth: 1000,
+    minHeight: 700,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
     icon: path.join(__dirname, "../assets/icon.png"),
-    title: "Electron FFmpeg Tool",
+    title: "Vixel - 專業影片壓縮工具",
   });
 
   // 載入 React 應用
@@ -62,49 +64,58 @@ ipcMain.handle("select-video-file", async () => {
   return null;
 });
 
-ipcMain.handle(
-  "compress-video",
-  async (
-    event,
-    data: {
-      inputPath: string;
-      vcodec: string;
-      crf: number;
-    }
-  ) => {
-    try {
-      const { inputPath, vcodec, crf } = data;
-
-      // 創建取消令牌
-      const cancelToken = { cancelled: false };
-
-      // 存儲取消令牌到全局變數，以便後續取消
-      (global as any).currentCancelToken = cancelToken;
-
-      const outputPath = await compressVideo(
-        inputPath,
-        vcodec,
-        crf,
-        (progress, estimatedTime) => {
-          // 發送進度更新到渲染程序
-          if (mainWindow) {
-            mainWindow.webContents.send("compression-progress", progress, estimatedTime);
-          }
-        },
-        cancelToken
-      );
-
-      // 清理取消令牌
-      (global as any).currentCancelToken = null;
-
-      return { success: true, outputPath };
-    } catch (error) {
-      // 清理取消令牌
-      (global as any).currentCancelToken = null;
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
-    }
+// 添加獲取影片資訊的 IPC 處理器
+ipcMain.handle("get-video-info", async (event, filePath: string) => {
+  try {
+    const info = await getVideoInfo(filePath);
+    return info;
+  } catch (error) {
+    throw error instanceof Error ? error.message : "Unknown error";
   }
-);
+});
+
+ipcMain.handle("compress-video", async (event, inputPath: string, vcodec: string, crf: number, progressChannel: string) => {
+  try {
+    // 創建取消令牌
+    const cancelToken = { cancelled: false };
+
+    // 存儲取消令牌到全局變數，以便後續取消
+    (global as any).currentCancelToken = cancelToken;
+
+    const outputPath = await compressVideo(
+      inputPath,
+      vcodec,
+      crf,
+      (progress, estimatedTime) => {
+        // 通過指定的通道發送進度更新
+        if (mainWindow) {
+          mainWindow.webContents.send(progressChannel, progress, estimatedTime);
+        }
+      },
+      cancelToken
+    );
+
+    // 清理取消令牌
+    (global as any).currentCancelToken = null;
+
+    // 獲取原始檔案大小
+    const fs = require("fs");
+    const originalSize = fs.statSync(inputPath).size;
+    const compressedSize = fs.statSync(outputPath).size;
+    const compressionRatio = ((originalSize - compressedSize) / originalSize) * 100;
+
+    return {
+      outputPath,
+      originalSize,
+      compressedSize,
+      compressionRatio,
+    };
+  } catch (error) {
+    // 清理取消令牌
+    (global as any).currentCancelToken = null;
+    throw error instanceof Error ? error.message : "Unknown error";
+  }
+});
 
 // 添加取消壓縮的 IPC 處理器
 ipcMain.handle("cancel-compression", async (event) => {
