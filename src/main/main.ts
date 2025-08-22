@@ -79,7 +79,7 @@ ipcMain.handle("get-video-info", async (event, filePath: string) => {
   }
 });
 
-ipcMain.handle("compress-video", async (event, inputPath: string, vcodec: string, crf: number, progressChannel: string) => {
+ipcMain.handle("compress-video", async (event, inputPath: string, vcodec: string, crf: number, resolution: string, acodec: string, progressChannel: string) => {
   try {
     // 創建取消令牌
     const cancelToken = { cancelled: false };
@@ -91,6 +91,8 @@ ipcMain.handle("compress-video", async (event, inputPath: string, vcodec: string
       inputPath,
       vcodec,
       crf,
+      resolution,
+      acodec,
       (progress, estimatedTime) => {
         // 通過指定的通道發送進度更新
         if (mainWindow) {

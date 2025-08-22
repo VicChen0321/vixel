@@ -11,6 +11,8 @@ declare global {
         inputPath: string,
         vcodec: string,
         crf: number,
+        resolution: string,
+        acodec: string,
         progressCallback: (progress: number, estimatedTime?: string) => void
       ) => Promise<{
         outputPath: string;

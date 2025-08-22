@@ -24,7 +24,7 @@ export interface VideoInfo {
   format: string;
 }
 
-export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 23, progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
+export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 28, resolution: string = "original", acodec: string = "aac", progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
       // 檢查輸入檔案是否存在
@@ -58,26 +58,44 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
       console.log(`影片總時長: ${totalDuration} 秒`);
 
       // 構建 FFmpeg 命令參數
-      const ffmpegArgs = [
-        "-i",
-        inputPath,
-        "-c:v",
-        vcodec,
-        "-crf",
-        crf.toString(),
-        "-preset",
-        "medium",
-        "-movflags",
-        "+faststart",
-        "-c:a",
-        "aac",
-        "-ac",
-        "2",
-        "-ar",
-        "44100",
-        "-y", // 覆蓋輸出檔案
-        outputPath,
-      ];
+      const ffmpegArgs = ["-i", inputPath];
+
+      // 添加影片編碼器設定
+      if (vcodec !== "copy") {
+        ffmpegArgs.push("-c:v", vcodec, "-crf", crf.toString());
+      } else {
+        ffmpegArgs.push("-c:v", "copy");
+      }
+
+      // 添加解析度設定
+      if (resolution !== "original" && vcodec !== "copy") {
+        let scaleFilter = "";
+        switch (resolution) {
+          case "1080p":
+            scaleFilter = "scale=1920:1080";
+            break;
+          case "720p":
+            scaleFilter = "scale=1280:720";
+            break;
+          case "480p":
+            scaleFilter = "scale=854:480";
+            break;
+        }
+
+        if (scaleFilter) {
+          ffmpegArgs.push("-vf", scaleFilter);
+        }
+      }
+
+      // 添加音訊編碼器設定
+      if (acodec !== "copy") {
+        ffmpegArgs.push("-c:a", acodec, "-ac", "2", "-ar", "44100");
+      } else {
+        ffmpegArgs.push("-c:a", "copy");
+      }
+
+      // 添加其他參數
+      ffmpegArgs.push("-preset", "medium", "-movflags", "+faststart", "-y", outputPath);
 
       console.log("FFmpeg 命令參數:", ffmpegArgs.join(" "));
 

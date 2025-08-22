@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getVideoInfo: (filePath: string) => ipcRenderer.invoke("get-video-info", filePath),
 
   // 壓縮影片
-  compressVideo: (inputPath: string, vcodec: string, crf: number, progressCallback: (progress: number, estimatedTime?: string) => void) => {
+  compressVideo: (inputPath: string, vcodec: string, crf: number, resolution: string, acodec: string, progressCallback: (progress: number, estimatedTime?: string) => void) => {
     // 創建一個唯一的通道名稱來處理進度回調
     const channelName = `progress-${Date.now()}-${Math.random()}`;
 
@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on(channelName, progressListener);
 
     // 調用壓縮方法
-    return ipcRenderer.invoke("compress-video", inputPath, vcodec, crf, channelName).finally(() => {
+    return ipcRenderer.invoke("compress-video", inputPath, vcodec, crf, resolution, acodec, channelName).finally(() => {
       // 清理監聽器
       ipcRenderer.removeAllListeners(channelName);
     });
