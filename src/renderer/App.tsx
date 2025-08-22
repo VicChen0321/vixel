@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const [selectedFileName, setSelectedFileName] = useState<string>("");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [vcodec, setVcodec] = useState<string>("libx264");
-  const [crf, setCrf] = useState<number>(23);
+  const [crf, setCrf] = useState<number>(28);
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [estimatedTime, setEstimatedTime] = useState<string>("");
@@ -83,14 +83,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const getCrfDescription = () => {
-    if (crf <= 18) return "無損品質";
-    if (crf <= 23) return "高品質";
-    if (crf <= 28) return "良好品質";
-    if (crf <= 35) return "一般品質";
-    return "低品質";
-  };
-
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -106,8 +98,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box textAlign="center" mb={4}>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      {/* 標題區 */}
+      <Box textAlign="center" mb={3}>
         <Typography variant="h2" component="h1" gutterBottom color="primary" fontWeight="bold">
           Vixel
         </Typography>
@@ -119,22 +112,23 @@ const App: React.FC = () => {
         </Typography>
       </Box>
 
-      <Grid container spacing={4}>
+      <Grid container spacing={3}>
         {/* 主要操作區域 */}
         <Grid size={{ xs: 12, md: 8 }}>
-          <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
+          {/* 選擇影片 */}
+          <Paper elevation={3} sx={{ p: 4, mb: 2 }}>
             <Typography variant="h6" gutterBottom>
               影片選擇
             </Typography>
 
-            <Box sx={{ mb: 3 }}>
-              <Button variant="outlined" startIcon={<UploadIcon />} size="large" fullWidth sx={{ py: 2 }} onClick={handleFileSelect}>
+            <Box sx={{ mb: 2 }}>
+              <Button variant="outlined" startIcon={<UploadIcon />} size="medium" fullWidth sx={{ py: 2 }} onClick={handleFileSelect}>
                 選擇影片檔案
               </Button>
             </Box>
 
             {selectedFilePath && (
-              <Card variant="outlined" sx={{ mb: 3 }}>
+              <Card variant="outlined" sx={{ mb: 2 }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Box>
@@ -143,7 +137,7 @@ const App: React.FC = () => {
                       </Typography>
                       {videoInfo && (
                         <Typography variant="body2" color="text.secondary">
-                          {formatDuration(videoInfo.duration)} • {formatFileSize(videoInfo.size)}
+                          {formatDuration(videoInfo.duration)} • {formatFileSize(videoInfo.size)} • {videoInfo.format}
                         </Typography>
                       )}
                     </Box>
@@ -166,6 +160,28 @@ const App: React.FC = () => {
               </Card>
             )}
 
+            {/* 進度顯示 - 移到這裡，選擇檔案後立即顯示 */}
+            {isCompressing && (
+              <Paper elevation={3} sx={{ p: 4, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  壓縮進度
+                </Typography>
+
+                <Box sx={{ mb: 2 }}>
+                  <LinearProgress variant="determinate" value={progress} sx={{ height: 10, borderRadius: 5 }} />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {progress.toFixed(1)}% 完成
+                  </Typography>
+                </Box>
+
+                {estimatedTime && (
+                  <Typography variant="body2" color="text.secondary">
+                    預估剩餘時間: {estimatedTime}
+                  </Typography>
+                )}
+              </Paper>
+            )}
+
             {selectedFilePath && (
               <>
                 <Divider sx={{ my: 3 }} />
@@ -174,11 +190,11 @@ const App: React.FC = () => {
                   壓縮設定
                 </Typography>
 
-                <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid container spacing={3} sx={{ mb: 2 }}>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <FormControl fullWidth>
                       <InputLabel>影片編碼器</InputLabel>
-                      <Select value={vcodec} label="影片編碼器" onChange={(e) => setVcodec(e.target.value)}>
+                      <Select size="small" value={vcodec} label="影片編碼器" onChange={(e) => setVcodec(e.target.value)}>
                         <MenuItem value="libx264">H.264 (libx264)</MenuItem>
                         <MenuItem value="libx265">H.265 (libx265)</MenuItem>
                         <MenuItem value="libvpx-vp9">VP9 (libvpx-vp9)</MenuItem>
@@ -189,7 +205,7 @@ const App: React.FC = () => {
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <FormControl fullWidth>
                       <InputLabel>CRF 值</InputLabel>
-                      <Select value={crf} label="CRF 值" onChange={(e) => setCrf(e.target.value as number)}>
+                      <Select size="small" value={crf} label="CRF 值" onChange={(e) => setCrf(e.target.value as number)}>
                         <MenuItem value={18}>18 (無損)</MenuItem>
                         <MenuItem value={20}>20 (極高品質)</MenuItem>
                         <MenuItem value={23}>23 (高品質)</MenuItem>
@@ -201,12 +217,6 @@ const App: React.FC = () => {
                     </FormControl>
                   </Grid>
                 </Grid>
-
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  <Typography variant="body2">
-                    <strong>CRF {crf}</strong> - {getCrfDescription()}
-                  </Typography>
-                </Alert>
 
                 <Box textAlign="center">
                   {isCompressing ? (
@@ -223,38 +233,16 @@ const App: React.FC = () => {
             )}
           </Paper>
 
-          {/* 進度顯示 */}
-          {isCompressing && (
-            <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                壓縮進度
-              </Typography>
-
-              <Box sx={{ mb: 2 }}>
-                <LinearProgress variant="determinate" value={progress} sx={{ height: 10, borderRadius: 5 }} />
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {progress.toFixed(1)}% 完成
-                </Typography>
-              </Box>
-
-              {estimatedTime && (
-                <Typography variant="body2" color="text.secondary">
-                  預估剩餘時間: {estimatedTime}
-                </Typography>
-              )}
-            </Paper>
-          )}
-
           {/* 錯誤顯示 */}
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
               {error}
             </Alert>
           )}
 
           {/* 結果顯示 */}
           {result && (
-            <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
+            <Paper elevation={3} sx={{ p: 4, mb: 2 }}>
               <Box display="flex" alignItems="center" gap={2} mb={2}>
                 <CheckIcon color="success" />
                 <Typography variant="h6" color="success.main">
@@ -300,22 +288,22 @@ const App: React.FC = () => {
             </Typography>
 
             <Stack spacing={2}>
-              <Box>
+              <Box sx={{ display: "flex", alignItems: "left" }}>
                 <Chip label="1" color="primary" size="small" sx={{ mr: 1 }} />
                 <Typography variant="body2">選擇要壓縮的影片檔案</Typography>
               </Box>
 
-              <Box>
+              <Box sx={{ display: "flex", alignItems: "left" }}>
                 <Chip label="2" color="primary" size="small" sx={{ mr: 1 }} />
                 <Typography variant="body2">設定影片編碼器和 CRF 值</Typography>
               </Box>
 
-              <Box>
+              <Box sx={{ display: "flex", alignItems: "left" }}>
                 <Chip label="3" color="primary" size="small" sx={{ mr: 1 }} />
                 <Typography variant="body2">點擊「開始壓縮」開始處理</Typography>
               </Box>
 
-              <Box>
+              <Box sx={{ display: "flex", alignItems: "left" }}>
                 <Chip label="4" color="primary" size="small" sx={{ mr: 1 }} />
                 <Typography variant="body2">壓縮完成後，輸出檔案會保存在原檔案同目錄下</Typography>
               </Box>
@@ -325,7 +313,7 @@ const App: React.FC = () => {
 
             <Typography variant="body2" color="text.secondary">
               <InfoIcon sx={{ fontSize: 16, mr: 0.5, verticalAlign: "middle" }} />
-              CRF 值越低品質越好，檔案越大。建議從 23 開始調整。
+              CRF 值越低品質越好，檔案越大。建議從 23~28 開始調整。
             </Typography>
           </Paper>
         </Grid>

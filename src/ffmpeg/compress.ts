@@ -19,18 +19,9 @@ export interface CompressionOptions {
 }
 
 export interface VideoInfo {
-  format: {
-    duration: number;
-    size: number;
-    bit_rate: string;
-  };
-  streams: Array<{
-    codec_type: string;
-    codec_name: string;
-    width?: number;
-    height?: number;
-    duration?: number;
-  }>;
+  duration: number;
+  size: number;
+  format: string;
 }
 
 export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 23, progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
@@ -44,7 +35,7 @@ export async function compressVideo(inputPath: string, vcodec: string = "libx264
 
       // 獲取影片總時長
       const videoInfo = await getVideoInfo(inputPath);
-      const totalDuration = videoInfo.format.duration || 0;
+      const totalDuration = videoInfo.duration || 0;
 
       if (totalDuration === 0) {
         reject(new Error("無法獲取影片時長"));
@@ -252,7 +243,30 @@ export function getVideoInfo(inputPath: string): Promise<VideoInfo> {
       if (code === 0) {
         try {
           const metadata = JSON.parse(stdoutData);
-          resolve(metadata);
+
+          // 提取需要的資訊
+          const format = metadata.format;
+          const videoStream = metadata.streams.find((stream: any) => stream.codec_type === "video");
+
+          // 檢查並轉換數值
+          const duration = parseFloat(format.duration) || 0;
+          const size = parseInt(format.size) || 0;
+          const formatName = format.format_name || "unknown";
+
+          console.log("FFprobe 原始數據:", {
+            duration: format.duration,
+            size: format.size,
+            format_name: format.format_name,
+            parsed: { duration, size, formatName },
+          });
+
+          const videoInfo: VideoInfo = {
+            duration,
+            size,
+            format: formatName,
+          };
+
+          resolve(videoInfo);
         } catch (error) {
           reject(new Error(`無法解析影片資訊: ${error instanceof Error ? error.message : "Unknown error"}`));
         }

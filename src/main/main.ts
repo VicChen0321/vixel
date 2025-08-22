@@ -1,15 +1,20 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, screen } from "electron";
 import * as path from "path";
 import { compressVideo, getVideoInfo } from "../ffmpeg/compress";
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  // 動態設定視窗大小 (佔螢幕 80%，但不超過 1600x1000)
+  const winWidth = Math.min(Math.floor(width * 0.8), 1600);
+  const winHeight = Math.min(Math.floor(height * 0.8), 1000);
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 1000,
-    minHeight: 700,
+    width: winWidth,
+    height: winHeight,
+    minWidth: 1200,
+    minHeight: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
