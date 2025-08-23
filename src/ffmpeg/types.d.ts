@@ -1,15 +1,17 @@
-declare module "ffprobe-static" {
-  interface FFprobeStatic {
+declare module "@ffmpeg-installer/ffmpeg" {
+  interface FFmpegInstaller {
     path: string;
+    version: string;
   }
-  const ffprobeStatic: FFprobeStatic;
-  export default ffprobeStatic;
+  const ffmpegInstaller: FFmpegInstaller;
+  export default ffmpegInstaller;
 }
 
-declare module "ffmpeg-static" {
-  interface FFmpegStatic {
-    path?: string;
+declare module "@ffprobe-installer/ffprobe" {
+  interface FFprobeInstaller {
+    path: string;
+    version: string;
   }
-  const ffmpegStatic: FFmpegStatic | string;
-  export default ffmpegStatic;
+  const ffprobeInstaller: FFprobeInstaller;
+  export default ffprobeInstaller;
 }

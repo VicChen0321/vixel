@@ -12,8 +12,8 @@
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "node scripts/install-darwin-deps.js && npm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "npm run build && electron-builder --win --x64",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
@@ -28,6 +28,12 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
+    "@ffmpeg-installer/darwin-arm64": "^4.1.5",
+    "@ffmpeg-installer/darwin-x64": "^4.1.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/darwin-arm64": "^5.0.1",
+    "@ffprobe-installer/darwin-x64": "^5.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
@@ -48,8 +54,6 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.1",
     "@mui/material": "^7.3.1",
-    "ffmpeg-static": "^5.2.0",
-    "ffprobe-static": "^3.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -61,8 +65,19 @@
     },
     "files": [
       "dist/**/*",
-      "node_modules/ffmpeg-static/**/*",
-      "node_modules/ffprobe-static/**/*"
+      "node_modules/@ffmpeg-installer/**/*",
+      "node_modules/@ffprobe-installer/**/*"
+    ],
+    "afterPack": "scripts/clean-unused-arch-deps.js",
+    "extraResources": [
+      {
+        "from": "node_modules/@ffmpeg-installer",
+        "to": "@ffmpeg-installer"
+      },
+      {
+        "from": "node_modules/@ffprobe-installer",
+        "to": "@ffprobe-installer"
+      }
     ],
     "mac": {
       "category": "public.app-category.video",
@@ -75,23 +90,34 @@
           ]
         }
       ],
-      "identity": null
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "linux": {
-      "target": "AppImage"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     },
-    "extraResources": [
-      {
-        "from": "node_modules/ffmpeg-static",
-        "to": "ffmpeg-static"
-      },
-      {
-        "from": "node_modules/ffprobe-static",
-        "to": "ffprobe-static"
-      }
+    "asarUnpack": [
+      "node_modules/@ffmpeg-installer/**/*",
+      "node_modules/@ffprobe-installer/**/*"
     ]
   }
 }

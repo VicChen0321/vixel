@@ -1,57 +1,20 @@
 import { spawn } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
-import ffmpegStatic from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 
-// 獲取 ffmpeg 二進制檔案路徑
-function getFFmpegPath(): string {
-  // 判斷是否為開發模式
-  if (process.env.NODE_ENV === "development") {
-    // 開發模式：使用 ffmpeg-static 回傳的路徑
-    if (!ffmpegStatic) {
-      throw new Error("FFmpeg 二進制檔案未找到");
-    }
-
-    let ffmpegPath: string;
-    if (typeof ffmpegStatic === "string") {
-      ffmpegPath = ffmpegStatic;
-    } else if (ffmpegStatic && typeof ffmpegStatic === "object" && "path" in ffmpegStatic) {
-      ffmpegPath = (ffmpegStatic as any).path;
-    } else {
-      throw new Error("FFmpeg 路徑格式不正確");
-    }
-
-    if (!fs.existsSync(ffmpegPath)) {
-      throw new Error(`FFmpeg 路徑不存在: ${ffmpegPath}`);
-    }
-
-    return ffmpegPath;
-  } else {
-    // Production 模式：直接從 process.resourcesPath 構建路徑
-    const resourcesPath = (process as any).resourcesPath;
-    if (!resourcesPath) {
-      throw new Error("無法獲取 resourcesPath");
-    }
-
-    // ffmpeg-static 的二進制檔案直接在根目錄
-    const isWindows = process.platform === "win32";
-    const binaryName = isWindows ? "ffmpeg.exe" : "ffmpeg";
-    const ffmpegPath = path.join(resourcesPath, "ffmpeg-static", binaryName);
-
-    if (!fs.existsSync(ffmpegPath)) {
-      throw new Error(`FFmpeg 路徑不存在: ${ffmpegPath}`);
-    }
-
-    console.log(`使用 production 路徑: ${ffmpegPath}`);
-    return ffmpegPath;
-  }
+export interface CancelToken {
+  cancelled: boolean;
+  process?: any;
 }
 
 export interface CompressionOptions {
   inputPath: string;
-  vcodec: string;
-  crf: number;
+  vcodec?: string;
+  crf?: number;
+  resolution?: string;
+  acodec?: string;
+  progressCallback?: (progress: number, estimatedTime?: string) => void;
+  cancelToken?: CancelToken;
 }
 
 export interface VideoInfo {
@@ -60,341 +23,295 @@ export interface VideoInfo {
   format: string;
 }
 
-export async function compressVideo(inputPath: string, vcodec: string = "libx264", crf: number = 28, resolution: string = "original", acodec: string = "aac", progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: { cancelled: boolean }): Promise<string> {
+// ======== 路徑工具 ========
+function getFFmpegPath(): string {
+  let ffmpegPath: string = "";
+
+  try {
+    // 嘗試在開發環境中載入模組
+    const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
+    ffmpegPath = ffmpegInstaller.path;
+
+    // 處理打包後的路徑問題
+    if (ffmpegPath.includes("app.asar") && !ffmpegPath.includes("app.asar.unpacked")) {
+      ffmpegPath = ffmpegPath.replace("app.asar", "app.asar.unpacked");
+    }
+  } catch (error) {
+    // 在打包環境中，直接構建路徑
+    const platform = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : "linux";
+    const arch = process.arch === "arm64" ? "arm64" : "x64";
+    const ext = process.platform === "win32" ? ".exe" : "";
+
+    // 嘗試多個可能的路徑和架構
+    const architectures = [arch]; // 先嘗試當前架構
+    if (arch === "x64") {
+      architectures.push("arm64"); // x64 系統也可以嘗試 arm64（透過 Rosetta）
+    }
+
+    let found = false;
+    for (const testArch of architectures) {
+      if (found) break;
+
+      const possiblePaths = [
+        // extraResources 路徑
+        path.join(process.resourcesPath, "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+        // app.asar.unpacked 路徑
+        path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+        // macOS 應用程式包路徑
+        path.join(path.dirname(process.execPath), "..", "Resources", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+        // 開發環境中的通用路徑
+        path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+      ];
+
+      for (const testPath of possiblePaths) {
+        console.log("測試 FFmpeg 路徑:", testPath, "存在:", fs.existsSync(testPath));
+        if (fs.existsSync(testPath)) {
+          ffmpegPath = testPath;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!ffmpegPath) {
+      throw new Error(`無法找到 FFmpeg 二進制檔案。平台: ${platform}, 架構: ${arch}, 嘗試的架構: ${architectures.join(", ")}`);
+    }
+  }
+
+  console.log("FFmpeg 路徑:", ffmpegPath);
+
+  if (!fs.existsSync(ffmpegPath)) {
+    throw new Error(`FFmpeg 不存在: ${ffmpegPath}`);
+  }
+
+  return ffmpegPath;
+}
+
+function getFFprobePath(): string {
+  let ffprobePath: string = "";
+
+  try {
+    // 嘗試在開發環境中載入模組
+    const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
+    ffprobePath = ffprobeInstaller.path;
+
+    // 處理打包後的路徑問題
+    if (ffprobePath.includes("app.asar") && !ffprobePath.includes("app.asar.unpacked")) {
+      ffprobePath = ffprobePath.replace("app.asar", "app.asar.unpacked");
+    }
+  } catch (error) {
+    // 在打包環境中，直接構建路徑
+    const platform = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : "linux";
+    const arch = process.arch === "arm64" ? "arm64" : "x64";
+    const ext = process.platform === "win32" ? ".exe" : "";
+
+    // 嘗試多個可能的路徑和架構
+    const architectures = [arch]; // 先嘗試當前架構
+    if (arch === "x64") {
+      architectures.push("arm64"); // x64 系統也可以嘗試 arm64（透過 Rosetta）
+    }
+
+    let found = false;
+    for (const testArch of architectures) {
+      if (found) break;
+
+      const possiblePaths = [
+        // extraResources 路徑
+        path.join(process.resourcesPath, "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+        // app.asar.unpacked 路徑
+        path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+        // macOS 應用程式包路徑
+        path.join(path.dirname(process.execPath), "..", "Resources", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+        // 開發環境中的通用路徑
+        path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+      ];
+
+      for (const testPath of possiblePaths) {
+        console.log("測試 FFprobe 路徑:", testPath, "存在:", fs.existsSync(testPath));
+        if (fs.existsSync(testPath)) {
+          ffprobePath = testPath;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!ffprobePath) {
+      throw new Error(`無法找到 FFprobe 二進制檔案。平台: ${platform}, 架構: ${arch}, 嘗試的架構: ${architectures.join(", ")}`);
+    }
+  }
+
+  console.log("FFprobe 路徑:", ffprobePath);
+
+  if (!fs.existsSync(ffprobePath)) {
+    throw new Error(`FFprobe 不存在: ${ffprobePath}`);
+  }
+
+  return ffprobePath;
+}
+
+// ======== 壓縮影片 ========
+export async function compressVideo(inputPath: string, vcodec = "libx264", crf = 28, resolution = "original", acodec = "aac", progressCallback?: (progress: number, estimatedTime?: string) => void, cancelToken?: CancelToken): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
-      // 檢查輸入檔案是否存在
       if (!fs.existsSync(inputPath)) {
-        reject(new Error(`輸入檔案不存在: ${inputPath}`));
-        return;
+        return reject(new Error(`輸入檔案不存在: ${inputPath}`));
       }
 
-      // 獲取影片總時長
       const videoInfo = await getVideoInfo(inputPath);
       const totalDuration = videoInfo.duration || 0;
-
       if (totalDuration === 0) {
-        reject(new Error("無法獲取影片時長"));
-        return;
+        return reject(new Error("無法獲取影片時長"));
       }
 
-      // 生成輸出檔案路徑
       const inputDir = path.dirname(inputPath);
-      const inputName = path.basename(inputPath, path.extname(inputPath));
-      const inputExt = path.extname(inputPath);
-      const outputPath = path.join(inputDir, `${inputName}_compressed${inputExt}`);
+      const outputPath = path.join(inputDir, `${path.basename(inputPath, path.extname(inputPath))}_compressed${path.extname(inputPath)}`);
 
-      // 檢查輸出檔案是否已存在，如果存在則刪除
       if (fs.existsSync(outputPath)) {
         fs.unlinkSync(outputPath);
       }
 
-      let lastProgress = 0;
-      let lastProgressTime = 0;
-      console.log(`影片總時長: ${totalDuration} 秒`);
+      const args: string[] = ["-i", inputPath];
 
-      // 構建 FFmpeg 命令參數
-      const ffmpegArgs = ["-i", inputPath];
-
-      // 添加影片編碼器設定
       if (vcodec !== "copy") {
-        ffmpegArgs.push("-c:v", vcodec, "-crf", crf.toString());
+        args.push("-c:v", vcodec, "-crf", crf.toString());
       } else {
-        ffmpegArgs.push("-c:v", "copy");
+        args.push("-c:v", "copy");
       }
 
-      // 添加解析度設定
       if (resolution !== "original" && vcodec !== "copy") {
-        let scaleFilter = "";
-        switch (resolution) {
-          case "1080p":
-            scaleFilter = "scale=1920:1080";
-            break;
-          case "720p":
-            scaleFilter = "scale=1280:720";
-            break;
-          case "480p":
-            scaleFilter = "scale=854:480";
-            break;
-        }
-
-        if (scaleFilter) {
-          ffmpegArgs.push("-vf", scaleFilter);
+        const resMap: Record<string, string> = {
+          "1080p": "scale=1920:1080",
+          "720p": "scale=1280:720",
+          "480p": "scale=854:480",
+        };
+        if (resMap[resolution]) {
+          args.push("-vf", resMap[resolution]);
         }
       }
 
-      // 添加音訊編碼器設定
       if (acodec !== "copy") {
-        ffmpegArgs.push("-c:a", acodec, "-ac", "2", "-ar", "44100");
+        args.push("-c:a", acodec, "-ac", "2", "-ar", "44100");
       } else {
-        ffmpegArgs.push("-c:a", "copy");
+        args.push("-c:a", "copy");
       }
 
-      // 添加其他參數
-      ffmpegArgs.push("-preset", "medium", "-movflags", "+faststart", "-y", outputPath);
+      args.push("-preset", "medium", "-movflags", "+faststart", "-y", outputPath);
 
-      console.log("FFmpeg 命令參數:", ffmpegArgs.join(" "));
-
-      // 使用 ffmpeg-static 的路徑啟動 FFmpeg 進程
       const ffmpegPath = getFFmpegPath();
-      const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
+      console.log("執行 FFmpeg:", ffmpegPath);
+      console.log("FFmpeg 參數:", args);
 
-      // 將進程引用存儲到 cancelToken
-      if (cancelToken) {
-        (cancelToken as any).process = ffmpegProcess;
-        console.log("已設置 FFmpeg 進程引用到取消令牌");
-      }
+      const ffmpegProcess = spawn(ffmpegPath, args);
+      if (cancelToken) cancelToken.process = ffmpegProcess;
 
-      let stderrData = "";
+      let lastProgress = 0;
+      let lastTime = 0;
 
-      // 處理 stderr 輸出（FFmpeg 的進度信息）
       ffmpegProcess.stderr.on("data", (data) => {
-        const stderrLine = data.toString();
-        stderrData += stderrLine;
+        const line = data.toString();
 
-        // 檢查是否已取消
         if (cancelToken?.cancelled) {
-          console.log("壓縮已被取消，終止進程...");
           ffmpegProcess.kill("SIGKILL");
           return;
         }
 
-        // 解析進度信息和預估時間
-        const progressMatch = stderrLine.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-        const speedMatch = stderrLine.match(/speed=\s*(\d+\.?\d*)x/);
+        const matchTime = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+        const matchSpeed = line.match(/speed=\s*(\d+\.?\d*)x/);
 
-        if (progressMatch && progressCallback) {
-          const hours = parseInt(progressMatch[1]);
-          const minutes = parseInt(progressMatch[2]);
-          const seconds = parseFloat(progressMatch[3]);
-          const currentTimeInSeconds = hours * 3600 + minutes * 60 + seconds;
+        if (matchTime && progressCallback) {
+          const currentTime = parseInt(matchTime[1]) * 3600 + parseInt(matchTime[2]) * 60 + parseFloat(matchTime[3]);
+          const progress = Math.round((currentTime / totalDuration) * 100);
 
-          // 計算進度百分比
-          if (totalDuration > 0) {
-            const currentProgress = Math.round((currentTimeInSeconds / totalDuration) * 100);
+          if (progress > lastProgress && currentTime >= lastTime) {
+            lastProgress = progress;
+            lastTime = currentTime;
 
-            // 避免重複的進度更新和亂跳
-            if (currentProgress !== lastProgress && currentProgress > lastProgress && currentProgress <= 100 && currentProgress >= 0 && currentTimeInSeconds > lastProgressTime) {
-              // 確保進度不會倒退，且時間在增加
-              if (currentProgress >= lastProgress && currentTimeInSeconds >= lastProgressTime) {
-                lastProgress = currentProgress;
-                lastProgressTime = currentTimeInSeconds;
-
-                // 計算預估剩餘時間
-                let estimatedTime = "";
-                if (speedMatch && currentProgress > 0) {
-                  const speed = parseFloat(speedMatch[1]);
-                  const remainingTime = (totalDuration - currentTimeInSeconds) / speed;
-                  const remainingMinutes = Math.floor(remainingTime / 60);
-                  const remainingSeconds = Math.floor(remainingTime % 60);
-
-                  if (remainingMinutes > 0) {
-                    estimatedTime = `預估剩餘時間: ${remainingMinutes}分${remainingSeconds}秒 (${speed.toFixed(1)}x)`;
-                  } else {
-                    estimatedTime = `預估剩餘時間: ${remainingSeconds}秒 (${speed.toFixed(1)}x)`;
-                  }
-                }
-
-                console.log(`壓縮進度: ${currentProgress}% (${currentTimeInSeconds}s / ${totalDuration}s)`);
-                progressCallback(Math.min(currentProgress, 100), estimatedTime);
-              }
+            let estimate = "";
+            if (matchSpeed && progress > 0) {
+              const speed = parseFloat(matchSpeed[1]);
+              const remain = (totalDuration - currentTime) / speed;
+              const min = Math.floor(remain / 60);
+              const sec = Math.floor(remain % 60);
+              estimate = `剩餘 ${min > 0 ? `${min}分${sec}秒` : `${sec}秒`} (${speed.toFixed(1)}x)`;
             }
+
+            progressCallback(Math.min(progress, 100), estimate);
           }
         }
       });
 
-      // 處理進程退出
       ffmpegProcess.on("close", (code) => {
         if (cancelToken?.cancelled) {
-          console.log("壓縮已被取消，清理資源...");
-          // 清理取消令牌
-          if ((global as any).currentCancelToken === cancelToken) {
-            (global as any).currentCancelToken = null;
-            console.log("已清理取消令牌");
-          }
-          reject(new Error("壓縮已被取消"));
-          return;
+          return reject(new Error("壓縮已被取消"));
         }
 
-        if (code === 0) {
-          console.log("FFmpeg 進程正常退出，代碼:", code);
-
-          // 檢查輸出檔案是否存在
-          if (fs.existsSync(outputPath)) {
-            const stats = fs.statSync(outputPath);
-            if (stats.size > 0) {
-              console.log("影片壓縮完成");
-              resolve(outputPath);
-            } else {
-              reject(new Error("輸出檔案大小為 0，壓縮可能失敗"));
-            }
-          } else {
-            reject(new Error("輸出檔案未生成"));
-          }
-        } else {
-          console.error("FFmpeg 進程異常退出，代碼:", code);
-          reject(new Error(`FFmpeg 進程異常退出，代碼: ${code}`));
+        if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          return resolve(outputPath);
         }
+
+        reject(new Error("FFmpeg 壓縮失敗"));
       });
 
-      // 處理進程錯誤
       ffmpegProcess.on("error", (err) => {
-        if (cancelToken?.cancelled) {
-          console.log("壓縮已被取消，清理資源...");
-          // 清理取消令牌
-          if ((global as any).currentCancelToken === cancelToken) {
-            (global as any).currentCancelToken = null;
-            console.log("已清理取消令牌");
-          }
-          reject(new Error("壓縮已被取消"));
-          return;
-        }
-
-        console.error("FFmpeg 進程錯誤:", err);
         reject(new Error(`FFmpeg 進程錯誤: ${err.message}`));
       });
-
-      // 設置定時器檢查取消狀態
-      if (cancelToken) {
-        console.log("設置定時器檢查取消狀態...");
-        const cancelCheckInterval = setInterval(() => {
-          if (cancelToken.cancelled) {
-            clearInterval(cancelCheckInterval);
-            try {
-              ffmpegProcess.kill("SIGKILL");
-            } catch (error) {
-              console.error("終止 FFmpeg 進程時發生錯誤:", error);
-            }
-            reject(new Error("壓縮已被取消"));
-          }
-        }, 100); // 每 100ms 檢查一次
-      }
     } catch (error) {
-      reject(new Error(`壓縮準備失敗: ${error instanceof Error ? error.message : "Unknown error"}`));
+      reject(new Error(`壓縮失敗: ${error instanceof Error ? error.message : "未知錯誤"}`));
     }
   });
 }
 
-// 獲取影片資訊（使用 ffmpeg-static）
+// ======== 取得影片資訊 ========
 export function getVideoInfo(inputPath: string): Promise<VideoInfo> {
   return new Promise((resolve, reject) => {
-    // 獲取 ffprobe 路徑
-    let ffprobePath: string;
     try {
-      if (process.env.NODE_ENV === "development") {
-        // 開發模式：使用 ffprobe-static 回傳的路徑
-        if (typeof ffprobeStatic === "string") {
-          ffprobePath = ffprobeStatic;
-        } else if (ffprobeStatic && typeof ffprobeStatic === "object" && "path" in ffprobeStatic) {
-          ffprobePath = (ffprobeStatic as any).path;
+      const ffprobePath = getFFprobePath();
+      const args = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", inputPath];
+
+      console.log("執行 FFprobe:", ffprobePath);
+      console.log("參數:", args);
+
+      const ffprobeProcess = spawn(ffprobePath, args);
+
+      let stdout = "";
+      let stderr = "";
+
+      ffprobeProcess.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      ffprobeProcess.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      ffprobeProcess.on("close", (code) => {
+        console.log("FFprobe 退出碼:", code);
+        if (stderr) console.log("FFprobe stderr:", stderr);
+
+        if (code === 0 && stdout) {
+          try {
+            const metadata = JSON.parse(stdout);
+            resolve({
+              duration: parseFloat(metadata.format.duration) || 0,
+              size: parseInt(metadata.format.size) || 0,
+              format: metadata.format.format_name || "unknown",
+            });
+          } catch (err) {
+            reject(new Error(`解析影片資訊失敗: ${err instanceof Error ? err.message : "未知錯誤"}`));
+          }
         } else {
-          throw new Error("FFprobe 路徑未找到");
+          reject(new Error(`FFprobe 執行失敗，退出碼: ${code}, stderr: ${stderr}`));
         }
+      });
 
-        if (!fs.existsSync(ffprobePath)) {
-          throw new Error(`FFprobe 路徑不存在: ${ffprobePath}`);
-        }
-      } else {
-        // Production 模式：直接從 process.resourcesPath 構建路徑
-        const resourcesPath = (process as any).resourcesPath;
-        if (!resourcesPath) {
-          throw new Error("無法獲取 resourcesPath");
-        }
-
-        // ffprobe-static 的二進制檔案在平台特定的子目錄
-        const isWindows = process.platform === "win32";
-        const isMac = process.platform === "darwin";
-        const isLinux = process.platform === "linux";
-
-        let platformDir: string;
-        if (isMac) {
-          // 檢測架構
-          const arch = process.arch === "arm64" ? "arm64" : "x64";
-          platformDir = `darwin/${arch}`;
-        } else if (isLinux) {
-          platformDir = "linux";
-        } else if (isWindows) {
-          platformDir = "win32";
-        } else {
-          throw new Error(`不支援的平台: ${process.platform}`);
-        }
-
-        const binaryName = isWindows ? "ffprobe.exe" : "ffprobe";
-        ffprobePath = path.join(resourcesPath, "ffprobe-static", "bin", platformDir, binaryName);
-
-        if (!fs.existsSync(ffprobePath)) {
-          throw new Error(`FFprobe 路徑不存在: ${ffprobePath}`);
-        }
-
-        console.log(`使用 production 路徑: ${ffprobePath}`);
-      }
-    } catch (error) {
-      reject(new Error(`FFprobe 路徑錯誤: ${error instanceof Error ? error.message : "Unknown error"}`));
-      return;
+      ffprobeProcess.on("error", (err) => {
+        console.error("FFprobe 進程錯誤:", err);
+        reject(new Error(`FFprobe 進程錯誤: ${err.message}`));
+      });
+    } catch (pathError) {
+      console.error("獲取 FFprobe 路徑時發生錯誤:", pathError);
+      reject(new Error(`獲取 FFprobe 路徑失敗: ${pathError instanceof Error ? pathError.message : "未知錯誤"}`));
     }
-
-    const ffprobeArgs = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", inputPath];
-
-    const ffprobeProcess = spawn(ffprobePath, ffprobeArgs);
-    let stdoutData = "";
-    let stderrData = "";
-
-    ffprobeProcess.stdout.on("data", (data) => {
-      stdoutData += data.toString();
-    });
-
-    ffprobeProcess.stderr.on("data", (data) => {
-      stderrData += data.toString();
-    });
-
-    ffprobeProcess.on("close", (code) => {
-      if (code === 0) {
-        try {
-          const metadata = JSON.parse(stdoutData);
-
-          // 提取需要的資訊
-          const format = metadata.format;
-          const videoStream = metadata.streams.find((stream: any) => stream.codec_type === "video");
-
-          // 檢查並轉換數值
-          const duration = parseFloat(format.duration) || 0;
-          const size = parseInt(format.size) || 0;
-          const formatName = format.format_name || "unknown";
-
-          console.log("FFprobe 原始數據:", {
-            duration: format.duration,
-            size: format.size,
-            format_name: format.format_name,
-            parsed: { duration, size, formatName },
-          });
-
-          const videoInfo: VideoInfo = {
-            duration,
-            size,
-            format: formatName,
-          };
-
-          resolve(videoInfo);
-        } catch (error) {
-          reject(new Error(`無法解析影片資訊: ${error instanceof Error ? error.message : "Unknown error"}`));
-        }
-      } else {
-        reject(new Error(`FFprobe 進程異常退出，代碼: ${code}, 錯誤: ${stderrData}`));
-      }
-    });
-
-    ffprobeProcess.on("error", (err) => {
-      reject(new Error(`FFprobe 進程錯誤: ${err.message}`));
-    });
   });
-}
-
-// 檢查 FFmpeg 是否可用
-export function checkFFmpegAvailability(): boolean {
-  try {
-    const ffmpegPath = getFFmpegPath();
-    return !!ffmpegPath && fs.existsSync(ffmpegPath);
-  } catch (error) {
-    return false;
-  }
 }
