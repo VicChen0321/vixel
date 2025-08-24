@@ -52,7 +52,7 @@ function getFFmpegPath(): string {
     for (const testArch of architectures) {
       if (found) break;
 
-      let possiblePaths = [];
+      let possiblePaths: string[] = [];
 
       if (platform === "win32") {
         possiblePaths = [
@@ -130,7 +130,7 @@ function getFFprobePath(): string {
     for (const testArch of architectures) {
       if (found) break;
 
-      let possiblePaths = [];
+      let possiblePaths: string[] = [];
 
       if (platform === "win32") {
         possiblePaths = [
