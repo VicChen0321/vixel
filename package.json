@@ -13,7 +13,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder",
     "dist:mac": "node scripts/install-darwin-deps.js && npm run build && electron-builder --mac --arm64 --x64",
-    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win": "node scripts/install-win-deps.js && npm run build && electron-builder --win --x64",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
@@ -31,9 +31,11 @@
     "@ffmpeg-installer/darwin-arm64": "^4.1.5",
     "@ffmpeg-installer/darwin-x64": "^4.1.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffmpeg-installer/win32-x64": "^4.1.0",
     "@ffprobe-installer/darwin-arm64": "^5.0.1",
     "@ffprobe-installer/darwin-x64": "^5.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@ffprobe-installer/win32-x64": "^5.1.0",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",

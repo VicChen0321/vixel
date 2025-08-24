@@ -6,10 +6,6 @@ module.exports = async function cleanDeps(context) {
   const { packager, arch, appOutDir } = context;
   const platform = packager.platform.nodeName;
 
-  if (platform !== "darwin") {
-    return;
-  }
-
   const archMap = {
     1: "x64",
     3: "arm64",
@@ -20,14 +16,18 @@ module.exports = async function cleanDeps(context) {
     return;
   }
 
-  const resourcesPath = path.resolve(
-    appOutDir,
-    "Vixel.app", // 注意這裡改為您的應用程式名稱
-    "Contents",
-    "Resources"
-  );
+  let resourcesPath;
+  if (platform === "darwin") {
+    resourcesPath = path.resolve(appOutDir, "Vixel.app", "Contents", "Resources");
+  } else if (platform === "win32") {
+    resourcesPath = path.resolve(appOutDir, "resources");
+  } else {
+    console.log(`Unsupported platform: ${platform}`);
+    return;
+  }
 
   if (!fs.existsSync(resourcesPath)) {
+    console.log(`Resources path does not exist: ${resourcesPath}`);
     return;
   }
 
@@ -35,23 +35,29 @@ module.exports = async function cleanDeps(context) {
   const ffprobePath = path.resolve(resourcesPath, "@ffprobe-installer");
 
   if (!fs.existsSync(ffmpegPath) || !fs.existsSync(ffprobePath)) {
+    console.log("FFmpeg or FFprobe directories not found, skipping cleanup");
     return;
   }
 
-  const removeUnusedArch = (basePath, unusedArch) => {
-    const unusedPath = path.resolve(basePath, `darwin-${unusedArch}`);
+  const removeUnusedArch = (basePath, platformPrefix, unusedArch) => {
+    const unusedPath = path.resolve(basePath, `${platformPrefix}-${unusedArch}`);
     if (fs.existsSync(unusedPath)) {
       fs.rmSync(unusedPath, { recursive: true });
       console.log(`Removed unused ${unusedArch} dependencies from ${basePath}`);
     }
   };
 
-  if (currentArch === "x64") {
-    removeUnusedArch(ffmpegPath, "arm64");
-    removeUnusedArch(ffprobePath, "arm64");
-  } else if (currentArch === "arm64") {
-    removeUnusedArch(ffmpegPath, "x64");
-    removeUnusedArch(ffprobePath, "x64");
+  if (platform === "darwin") {
+    if (currentArch === "x64") {
+      removeUnusedArch(ffmpegPath, "darwin", "arm64");
+      removeUnusedArch(ffprobePath, "darwin", "arm64");
+    } else if (currentArch === "arm64") {
+      removeUnusedArch(ffmpegPath, "darwin", "x64");
+      removeUnusedArch(ffprobePath, "darwin", "x64");
+    }
+  } else if (platform === "win32") {
+    // Windows 目前只支援 x64，所以不需要清理其他架構
+    console.log("Windows platform detected, no arch cleanup needed (x64 only)");
   }
 
   console.log("Cleaned unused arch dependencies.");

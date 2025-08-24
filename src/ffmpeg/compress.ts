@@ -44,24 +44,39 @@ function getFFmpegPath(): string {
 
     // 嘗試多個可能的路徑和架構
     const architectures = [arch]; // 先嘗試當前架構
-    if (arch === "x64") {
-      architectures.push("arm64"); // x64 系統也可以嘗試 arm64（透過 Rosetta）
+    if (arch === "x64" && platform === "darwin") {
+      architectures.push("arm64"); // 只在 macOS 上嘗試 arm64（透過 Rosetta）
     }
 
     let found = false;
     for (const testArch of architectures) {
       if (found) break;
 
-      const possiblePaths = [
-        // extraResources 路徑
-        path.join(process.resourcesPath, "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
-        // app.asar.unpacked 路徑
-        path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
-        // macOS 應用程式包路徑
-        path.join(path.dirname(process.execPath), "..", "Resources", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
-        // 開發環境中的通用路徑
-        path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
-      ];
+      let possiblePaths = [];
+
+      if (platform === "win32") {
+        possiblePaths = [
+          // Windows extraResources 路徑
+          path.join(process.resourcesPath, "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // Windows app.asar.unpacked 路徑
+          path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // Windows 相對於可執行檔案的路徑
+          path.join(path.dirname(process.execPath), "resources", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // 開發環境中的通用路徑
+          path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+        ];
+      } else {
+        possiblePaths = [
+          // extraResources 路徑
+          path.join(process.resourcesPath, "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // app.asar.unpacked 路徑
+          path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // macOS 應用程式包路徑
+          path.join(path.dirname(process.execPath), "..", "Resources", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+          // 開發環境中的通用路徑
+          path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${platform}-${testArch}`, `ffmpeg${ext}`),
+        ];
+      }
 
       for (const testPath of possiblePaths) {
         console.log("測試 FFmpeg 路徑:", testPath, "存在:", fs.existsSync(testPath));
@@ -107,24 +122,39 @@ function getFFprobePath(): string {
 
     // 嘗試多個可能的路徑和架構
     const architectures = [arch]; // 先嘗試當前架構
-    if (arch === "x64") {
-      architectures.push("arm64"); // x64 系統也可以嘗試 arm64（透過 Rosetta）
+    if (arch === "x64" && platform === "darwin") {
+      architectures.push("arm64"); // 只在 macOS 上嘗試 arm64（透過 Rosetta）
     }
 
     let found = false;
     for (const testArch of architectures) {
       if (found) break;
 
-      const possiblePaths = [
-        // extraResources 路徑
-        path.join(process.resourcesPath, "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
-        // app.asar.unpacked 路徑
-        path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
-        // macOS 應用程式包路徑
-        path.join(path.dirname(process.execPath), "..", "Resources", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
-        // 開發環境中的通用路徑
-        path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
-      ];
+      let possiblePaths = [];
+
+      if (platform === "win32") {
+        possiblePaths = [
+          // Windows extraResources 路徑
+          path.join(process.resourcesPath, "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // Windows app.asar.unpacked 路徑
+          path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // Windows 相對於可執行檔案的路徑
+          path.join(path.dirname(process.execPath), "resources", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // 開發環境中的通用路徑
+          path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+        ];
+      } else {
+        possiblePaths = [
+          // extraResources 路徑
+          path.join(process.resourcesPath, "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // app.asar.unpacked 路徑
+          path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // macOS 應用程式包路徑
+          path.join(path.dirname(process.execPath), "..", "Resources", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+          // 開發環境中的通用路徑
+          path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${platform}-${testArch}`, `ffprobe${ext}`),
+        ];
+      }
 
       for (const testPath of possiblePaths) {
         console.log("測試 FFprobe 路徑:", testPath, "存在:", fs.existsSync(testPath));
